@@ -130,25 +130,44 @@ def calculate(
 
     breakdown: list[FactorContribution] = []
     weighted_sum = 0.0
-    weight_total = 0.0
+    # Track the true achievable min/max of weighted_sum for the *active* set of
+    # factors (each factor's own score_range times its weight), rather than
+    # assuming every factor tops out at 1.0. Directional presets (RSI, Fear &
+    # Greed) can score up to 1.5 or down to -1.5, so a fixed [0, weight_total]
+    # denominator would let the final score drift outside 0-100. Rescaling by
+    # the actual min/max keeps the score exactly within 0-100 regardless of
+    # which mix of boolean/plain-linear/directional factors are active.
+    min_possible = 0.0
+    max_possible = 0.0
 
     for factor in factors:
         weight = float(factor.weight)
         if weight == 0:
-            continue
-        if factor.id not in payload.values:
             continue
 
         preset = PRESETS_BY_KEY.get(factor.preset_key)
         if preset is None:
             continue  # stale preset reference (removed from the registry) -- skip rather than crash
 
-        raw_value = payload.values[factor.id]
-        normalized = max(0.0, min(1.0, preset.score_fn(raw_value)))
+        if factor.id in payload.values:
+            raw_value = payload.values[factor.id]
+        elif preset.input_type == "boolean":
+            # An untouched checkbox is still an explicit "false", not "no
+            # opinion" -- it must count as a discouraging -1 signal (see
+            # _boolean), not be silently excluded from the calculation as if
+            # the factor weren't added at all. Number factors have no such
+            # natural default, so they're still skipped below when absent.
+            raw_value = 0.0
+        else:
+            continue
+
+        lo, hi = preset.score_range
+        normalized = max(lo, min(hi, preset.score_fn(raw_value)))
 
         contribution = weight * normalized
         weighted_sum += contribution
-        weight_total += weight
+        min_possible += weight * lo
+        max_possible += weight * hi
 
         breakdown.append(
             FactorContribution(
@@ -162,5 +181,6 @@ def calculate(
             )
         )
 
-    score = (weighted_sum / weight_total * 100) if weight_total > 0 else 0.0
+    span = max_possible - min_possible
+    score = ((weighted_sum - min_possible) / span * 100) if span > 0 else 0.0
     return CalculateResponse(score=round(score, 2), breakdown=breakdown)

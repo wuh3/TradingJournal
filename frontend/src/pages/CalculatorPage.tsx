@@ -36,7 +36,9 @@ export function CalculatorPage() {
         <p className="mt-1 text-sm text-slate-500">
           Score a potential trade out of 100 from a weighted sum of preset factors (RSI, Fear &amp; Greed,
           confluence count, etc), each with its own built-in scoring logic. Pick the factors that apply and
-          set their weight (0–100) — weight 0 means it doesn't count.
+          set their weight (0–100) — weight 0 means it doesn't count. Unchecked boolean factors count as a
+          discouraging "no" (not just zero contribution), so leave a factor's weight at 0 if it truly
+          shouldn't affect the score.
         </p>
       </div>
 
