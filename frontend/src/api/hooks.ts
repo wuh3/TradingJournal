@@ -7,7 +7,9 @@ import type {
   JournalListItem,
   Order,
   OrderLink,
+  OrderListResponse,
   PnlSummary,
+  PositionType,
   Preset,
   Tag,
 } from './types'
@@ -64,7 +66,9 @@ export function useJournal(id: number | undefined) {
 export function useCreateJournal() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (payload: { date: string; notes?: string; tag_ids?: number[] }) =>
+    // The backend treats this as "create or get": posting a date that already
+    // has a journal just returns the existing one instead of erroring.
+    mutationFn: async (payload: { date: string; notes?: string }) =>
       (await apiClient.post<Journal>('/api/journals', payload)).data,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['journals'] }),
   })
@@ -73,7 +77,7 @@ export function useCreateJournal() {
 export function useUpdateJournal(id: number) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (payload: { date?: string; notes?: string; tag_ids?: number[] }) =>
+    mutationFn: async (payload: { date?: string; notes?: string }) =>
       (await apiClient.patch<Journal>(`/api/journals/${id}`, payload)).data,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['journal', id] })
@@ -92,6 +96,12 @@ export function useDeleteJournal() {
 
 // ---- Orders ----
 
+function invalidateOrderRelated(qc: ReturnType<typeof useQueryClient>, journalId: number) {
+  qc.invalidateQueries({ queryKey: ['journal', journalId] })
+  qc.invalidateQueries({ queryKey: ['journals'] })
+  qc.invalidateQueries({ queryKey: ['orders'] })
+}
+
 export function useCreateOrder(journalId: number) {
   const qc = useQueryClient()
   return useMutation({
@@ -100,19 +110,24 @@ export function useCreateOrder(journalId: number) {
       price: number
       quantity: number
       direction: 'buy' | 'sell'
+      position_type: PositionType
       status?: 'pending' | 'filled'
       note?: string
+      tag_ids?: number[]
     }) => (await apiClient.post<Order>(`/api/journals/${journalId}/orders`, payload)).data,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['journal', journalId] }),
+    onSuccess: () => invalidateOrderRelated(qc, journalId),
   })
 }
 
 export function useUpdateOrder(journalId: number) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async ({ orderId, ...payload }: { orderId: number } & Partial<Order>) =>
+    mutationFn: async ({
+      orderId,
+      ...payload
+    }: { orderId: number; tag_ids?: number[] } & Partial<Omit<Order, 'tags' | 'id' | 'journal_id'>>) =>
       (await apiClient.patch<Order>(`/api/orders/${orderId}`, payload)).data,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['journal', journalId] }),
+    onSuccess: () => invalidateOrderRelated(qc, journalId),
   })
 }
 
@@ -120,7 +135,19 @@ export function useDeleteOrder(journalId: number) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (orderId: number) => apiClient.delete(`/api/orders/${orderId}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['journal', journalId] }),
+    onSuccess: () => invalidateOrderRelated(qc, journalId),
+  })
+}
+
+export function useOrders(page: number, pageSize: number) {
+  return useQuery({
+    queryKey: ['orders', page, pageSize],
+    queryFn: async () =>
+      (
+        await apiClient.get<OrderListResponse>('/api/orders', {
+          params: { page, page_size: pageSize },
+        })
+      ).data,
   })
 }
 

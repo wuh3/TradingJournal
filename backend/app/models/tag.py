@@ -13,4 +13,4 @@ class Tag(Base):
     name: Mapped[str] = mapped_column(String(50), nullable=False)
     color: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
-    journals = relationship("Journal", secondary="journal_tags", back_populates="tags")
+    orders = relationship("OrderItem", secondary="order_tags", back_populates="tags")

@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Numeric, String, Text, func
+from sqlalchemy import Column, DateTime, Enum, ForeignKey, Numeric, String, Table, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -17,6 +17,19 @@ class OrderStatus(str, enum.Enum):
     FILLED = "filled"
 
 
+class PositionType(str, enum.Enum):
+    LONG = "long"
+    SHORT = "short"
+
+
+order_tags = Table(
+    "order_tags",
+    Base.metadata,
+    Column("order_id", ForeignKey("order_items.id", ondelete="CASCADE"), primary_key=True),
+    Column("tag_id", ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True),
+)
+
+
 class OrderItem(Base):
     __tablename__ = "order_items"
 
@@ -27,6 +40,9 @@ class OrderItem(Base):
     price: Mapped[float] = mapped_column(Numeric(18, 4), nullable=False)
     quantity: Mapped[float] = mapped_column(Numeric(18, 4), nullable=False)
     direction: Mapped[OrderDirection] = mapped_column(Enum(OrderDirection, name="order_direction"), nullable=False)
+    position_type: Mapped[PositionType] = mapped_column(
+        Enum(PositionType, name="position_type"), nullable=False, default=PositionType.LONG
+    )
     status: Mapped[OrderStatus] = mapped_column(
         Enum(OrderStatus, name="order_status"), nullable=False, default=OrderStatus.FILLED
     )
@@ -39,6 +55,7 @@ class OrderItem(Base):
 
     journal = relationship("Journal", back_populates="orders")
     images = relationship("OrderImage", back_populates="order", cascade="all, delete-orphan")
+    tags = relationship("Tag", secondary=order_tags, back_populates="orders")
 
     # Links where this order is the closing/reducing side
     links_from = relationship(

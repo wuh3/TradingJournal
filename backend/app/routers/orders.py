@@ -6,8 +6,9 @@ from app.core.deps import get_current_user
 from app.models.journal import Journal
 from app.models.order import OrderItem
 from app.models.order_link import OrderLink
+from app.models.tag import Tag
 from app.models.user import User
-from app.schemas.order import OrderCreate, OrderRead, OrderUpdate
+from app.schemas.order import OrderCreate, OrderListItem, OrderListResponse, OrderRead, OrderUpdate
 from app.schemas.order_link import OrderLinkCreate, OrderLinkRead
 
 router = APIRouter(tags=["orders"])
@@ -22,6 +23,16 @@ def _to_read(order: OrderItem) -> OrderRead:
     data = OrderRead.model_validate(order)
     data.open_quantity = _open_quantity(order)
     return data
+
+
+def _set_tags(db: Session, order: OrderItem, tag_ids: list[int], user: User) -> None:
+    if not tag_ids:
+        order.tags = []
+        return
+    tags = db.query(Tag).filter(Tag.id.in_(tag_ids), Tag.user_id == user.id).all()
+    if len(tags) != len(set(tag_ids)):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="One or more tag_ids are invalid")
+    order.tags = tags
 
 
 def _realized_pnl(from_order: OrderItem, to_order: OrderItem, quantity: float) -> float:
@@ -46,6 +57,7 @@ def _get_owned_order(db: Session, order_id: int, user: User) -> OrderItem:
             joinedload(OrderItem.images),
             joinedload(OrderItem.links_from),
             joinedload(OrderItem.links_to),
+            joinedload(OrderItem.tags),
         )
         .filter(OrderItem.id == order_id, Journal.user_id == user.id)
         .first()
@@ -62,6 +74,40 @@ def _get_owned_journal(db: Session, journal_id: int, user: User) -> Journal:
     return journal
 
 
+@router.get("/api/orders", response_model=OrderListResponse)
+def list_orders(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Paginated, cross-journal order list for the Orders page."""
+    query = (
+        db.query(OrderItem)
+        .join(Journal)
+        .options(joinedload(OrderItem.tags), joinedload(OrderItem.journal))
+        .filter(Journal.user_id == current_user.id)
+        .order_by(Journal.date.desc(), OrderItem.created_at.desc())
+    )
+    total = query.count()
+    orders = query.offset((page - 1) * page_size).limit(page_size).all()
+    items = [
+        OrderListItem(
+            id=o.id,
+            journal_id=o.journal_id,
+            date=o.journal.date,
+            ticker=o.ticker,
+            price=float(o.price),
+            quantity=float(o.quantity),
+            direction=o.direction,
+            position_type=o.position_type,
+            tags=o.tags,
+        )
+        for o in orders
+    ]
+    return OrderListResponse(items=items, total=total, page=page, page_size=page_size)
+
+
 @router.post(
     "/api/journals/{journal_id}/orders", response_model=OrderRead, status_code=status.HTTP_201_CREATED
 )
@@ -72,11 +118,15 @@ def create_order(
     current_user: User = Depends(get_current_user),
 ):
     _get_owned_journal(db, journal_id, current_user)
-    order = OrderItem(journal_id=journal_id, **payload.model_dump())
+    data = payload.model_dump()
+    tag_ids = data.pop("tag_ids")
+    order = OrderItem(journal_id=journal_id, **data)
     db.add(order)
+    db.flush()
+    _set_tags(db, order, tag_ids, current_user)
     db.commit()
     db.refresh(order)
-    return _to_read(order)
+    return _to_read(_get_owned_order(db, order.id, current_user))
 
 
 @router.get("/api/orders/linkable", response_model=list[OrderRead])
@@ -90,7 +140,7 @@ def linkable_orders(
     query = (
         db.query(OrderItem)
         .join(Journal)
-        .options(joinedload(OrderItem.links_from), joinedload(OrderItem.links_to))
+        .options(joinedload(OrderItem.links_from), joinedload(OrderItem.links_to), joinedload(OrderItem.tags))
         .filter(Journal.user_id == current_user.id, OrderItem.ticker == ticker)
     )
     if exclude_order_id is not None:
@@ -113,11 +163,15 @@ def update_order(
     current_user: User = Depends(get_current_user),
 ):
     order = _get_owned_order(db, order_id, current_user)
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    data = payload.model_dump(exclude_unset=True)
+    tag_ids = data.pop("tag_ids", None)
+    for field, value in data.items():
         setattr(order, field, value)
+    if tag_ids is not None:
+        _set_tags(db, order, tag_ids, current_user)
     db.commit()
     db.refresh(order)
-    return _to_read(order)
+    return _to_read(_get_owned_order(db, order.id, current_user))
 
 
 @router.delete("/api/orders/{order_id}", status_code=status.HTTP_204_NO_CONTENT)

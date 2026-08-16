@@ -1,21 +1,15 @@
 from datetime import date as date_type
 from datetime import datetime
 
-from sqlalchemy import Column, Date, DateTime, ForeignKey, Integer, Table, Text, func
+from sqlalchemy import DateTime, Date, ForeignKey, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 
-journal_tags = Table(
-    "journal_tags",
-    Base.metadata,
-    Column("journal_id", ForeignKey("journals.id", ondelete="CASCADE"), primary_key=True),
-    Column("tag_id", ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True),
-)
-
 
 class Journal(Base):
     __tablename__ = "journals"
+    __table_args__ = (UniqueConstraint("user_id", "date", name="uq_journal_user_date"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
@@ -26,6 +20,9 @@ class Journal(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
-    tags = relationship("Tag", secondary=journal_tags, back_populates="journals")
+    # Tags are no longer stored directly on the journal -- they're computed at
+    # query time as the union of this journal's orders' tags (see
+    # app/routers/journals.py). This keeps a single source of truth (the order)
+    # and avoids the two ever going out of sync.
     orders = relationship("OrderItem", back_populates="journal", cascade="all, delete-orphan")
     images = relationship("JournalImage", back_populates="journal", cascade="all, delete-orphan")

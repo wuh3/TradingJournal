@@ -11,13 +11,11 @@ from app.schemas.tag import TagRead
 class JournalCreate(BaseModel):
     date: date_type
     notes: str | None = None
-    tag_ids: list[int] = []
 
 
 class JournalUpdate(BaseModel):
     date: date_type | None = None
     notes: str | None = None
-    tag_ids: list[int] | None = None
 
 
 class JournalListItem(BaseModel):

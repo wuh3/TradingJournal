@@ -1,5 +1,6 @@
 export type Direction = 'buy' | 'sell'
 export type OrderStatus = 'pending' | 'filled'
+export type PositionType = 'long' | 'short'
 export type InputType = 'number' | 'boolean'
 
 export interface Tag {
@@ -31,14 +32,35 @@ export interface Order {
   price: number
   quantity: number
   direction: Direction
+  position_type: PositionType
   status: OrderStatus
   note: string | null
   created_at: string
   updated_at: string
+  tags: Tag[]
   images: ImageMeta[]
   links_from: OrderLink[]
   links_to: OrderLink[]
   open_quantity: number | null
+}
+
+export interface OrderListItem {
+  id: number
+  journal_id: number
+  date: string
+  ticker: string
+  price: number
+  quantity: number
+  direction: Direction
+  position_type: PositionType
+  tags: Tag[]
+}
+
+export interface OrderListResponse {
+  items: OrderListItem[]
+  total: number
+  page: number
+  page_size: number
 }
 
 export interface JournalListItem {
