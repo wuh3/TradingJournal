@@ -1,37 +1,25 @@
-import enum
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Numeric, String, func
+from sqlalchemy import DateTime, ForeignKey, Numeric, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
 
 
-class FactorType(str, enum.Enum):
-    NUMBER = "number"
-    BOOLEAN = "boolean"
-
-
 class EntryQualityFactor(Base):
     """
-    A user-defined factor for the EntryQualityCalculator (e.g. Risk/Reward
-    ratio, RSI, "at key level?"). Number factors are normalized to a 0-1
-    scale using min_value/max_value before their weight is applied, so they
-    contribute to the weighted score on equal footing with boolean factors
-    (which are just 0 or 1).
+    A factor the user has added to their EntryQualityCalculator, referencing
+    a preset by key (see app/core/factor_presets.py for the scoring logic
+    and metadata -- name/description/input_type are resolved from the
+    preset registry at read time, not stored here).
     """
 
     __tablename__ = "entry_quality_factors"
+    __table_args__ = (UniqueConstraint("user_id", "preset_key", name="uq_entry_quality_factor_user_preset"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    name: Mapped[str] = mapped_column(String(100), nullable=False)
-    factor_type: Mapped[FactorType] = mapped_column(Enum(FactorType, name="factor_type"), nullable=False)
-    weight: Mapped[float] = mapped_column(Numeric(10, 4), nullable=False, default=0)
-
-    # Only used/required for NUMBER factors, to normalize raw values to 0-1.
-    min_value: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
-    max_value: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
-
+    preset_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    weight: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False, default=0)
     sort_order: Mapped[int] = mapped_column(default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

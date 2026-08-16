@@ -8,6 +8,7 @@ import type {
   Order,
   OrderLink,
   PnlSummary,
+  Preset,
   Tag,
 } from './types'
 
@@ -215,6 +216,14 @@ export function usePnl() {
 
 // ---- Entry Quality Calculator ----
 
+export function usePresets() {
+  return useQuery({
+    queryKey: ['presets'],
+    queryFn: async () => (await apiClient.get<Preset[]>('/api/calculator/presets')).data,
+    staleTime: Infinity, // static catalog, no need to refetch
+  })
+}
+
 export function useFactors() {
   return useQuery({
     queryKey: ['factors'],
@@ -225,13 +234,8 @@ export function useFactors() {
 export function useCreateFactor() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (payload: {
-      name: string
-      factor_type: 'number' | 'boolean'
-      weight: number
-      min_value?: number
-      max_value?: number
-    }) => (await apiClient.post<Factor>('/api/calculator/factors', payload)).data,
+    mutationFn: async (payload: { preset_key: string; weight?: number }) =>
+      (await apiClient.post<Factor>('/api/calculator/factors', payload)).data,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['factors'] }),
   })
 }
@@ -239,7 +243,7 @@ export function useCreateFactor() {
 export function useUpdateFactor() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async ({ id, ...payload }: { id: number } & Partial<Factor>) =>
+    mutationFn: async ({ id, ...payload }: { id: number; weight?: number; sort_order?: number }) =>
       (await apiClient.patch<Factor>(`/api/calculator/factors/${id}`, payload)).data,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['factors'] }),
   })

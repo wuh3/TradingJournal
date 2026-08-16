@@ -1,15 +1,17 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   useCalculate,
   useCreateFactor,
   useDeleteFactor,
   useFactors,
+  usePresets,
   useUpdateFactor,
 } from '../api/hooks'
-import type { CalculateResult, Factor, FactorType } from '../api/types'
+import type { CalculateResult, Factor, Preset } from '../api/types'
 
 export function CalculatorPage() {
-  const { data: factors, isLoading } = useFactors()
+  const { data: presets, isLoading: presetsLoading } = usePresets()
+  const { data: factors, isLoading: factorsLoading } = useFactors()
   const createFactor = useCreateFactor()
   const updateFactor = useUpdateFactor()
   const deleteFactor = useDeleteFactor()
@@ -17,24 +19,28 @@ export function CalculatorPage() {
 
   const [values, setValues] = useState<Record<number, number>>({})
   const [result, setResult] = useState<CalculateResult | null>(null)
-  const [showForm, setShowForm] = useState(false)
+  const [showPicker, setShowPicker] = useState(false)
 
   async function handleCalculate() {
     const res = await calculate.mutateAsync(values)
     setResult(res)
   }
 
+  const addedKeys = new Set((factors ?? []).map((f) => f.preset_key))
+  const availablePresets = (presets ?? []).filter((p) => !addedKeys.has(p.key))
+
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-semibold text-slate-900">Entry Quality Calculator</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Score a potential trade out of 100 from a weighted sum of your own factors (Risk/Reward, RSI,
-          confluence of key levels, etc). Set each factor's weight below — weight 0 means it doesn't count.
+          Score a potential trade out of 100 from a weighted sum of preset factors (RSI, Fear &amp; Greed,
+          confluence count, etc), each with its own built-in scoring logic. Pick the factors that apply and
+          set their weight (0–100) — weight 0 means it doesn't count.
         </p>
       </div>
 
-      {isLoading ? (
+      {presetsLoading || factorsLoading ? (
         <p className="text-sm text-slate-400">Loading…</p>
       ) : (
         <div className="space-y-3">
@@ -50,25 +56,25 @@ export function CalculatorPage() {
           ))}
           {(factors ?? []).length === 0 && (
             <p className="text-sm text-slate-400">
-              No factors yet. Add one below (e.g. "Risk/Reward ≥ 2" as a boolean, or "RSI" as a number 0-100).
+              No factors added yet. Search the preset catalog below to add your first one.
             </p>
           )}
         </div>
       )}
 
-      {showForm ? (
-        <NewFactorForm
-          onCancel={() => setShowForm(false)}
-          onSubmit={async (payload) => {
-            await createFactor.mutateAsync(payload)
-            setShowForm(false)
+      {showPicker ? (
+        <PresetPicker
+          presets={availablePresets}
+          onCancel={() => setShowPicker(false)}
+          onAdd={async (presetKey) => {
+            await createFactor.mutateAsync({ preset_key: presetKey, weight: 0 })
           }}
           loading={createFactor.isPending}
         />
       ) : (
         <button
           type="button"
-          onClick={() => setShowForm(true)}
+          onClick={() => setShowPicker(true)}
           className="rounded-lg border border-dashed border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:border-slate-400 hover:bg-slate-50"
         >
           + Add factor
@@ -118,33 +124,36 @@ function FactorRow({
   onDelete: () => void
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-3">
-      <div className="min-w-[10rem] flex-1">
+    <div className="flex flex-wrap items-start gap-3 rounded-xl border border-slate-200 bg-white p-3">
+      <div className="min-w-[14rem] flex-1">
         <p className="text-sm font-medium text-slate-900">{factor.name}</p>
-        <p className="text-xs text-slate-400">
-          {factor.factor_type === 'number' ? `range ${factor.min_value}–${factor.max_value}` : 'yes / no'}
-        </p>
+        <p className="mt-0.5 text-xs text-slate-400">{factor.description}</p>
       </div>
 
       <div>
-        <label className="mb-1 block text-xs font-medium text-slate-500">Weight</label>
+        <label className="mb-1 block text-xs font-medium text-slate-500">Weight (0–100)</label>
         <input
           type="number"
+          min={0}
+          max={100}
           step="any"
           defaultValue={factor.weight}
-          onBlur={(e) => onWeightChange(Number(e.target.value))}
-          className="w-20 rounded-lg border border-slate-300 px-2 py-1 text-sm focus:border-slate-500 focus:outline-none"
+          onBlur={(e) => {
+            const clamped = Math.max(0, Math.min(100, Number(e.target.value)))
+            onWeightChange(clamped)
+          }}
+          className="w-24 rounded-lg border border-slate-300 px-2 py-1 text-sm focus:border-slate-500 focus:outline-none"
         />
       </div>
 
       <div>
         <label className="mb-1 block text-xs font-medium text-slate-500">Value</label>
-        {factor.factor_type === 'boolean' ? (
+        {factor.input_type === 'boolean' ? (
           <input
             type="checkbox"
             checked={!!value}
             onChange={(e) => onValueChange(e.target.checked ? 1 : 0)}
-            className="h-5 w-5"
+            className="mt-1 h-5 w-5"
           />
         ) : (
           <input
@@ -157,118 +166,81 @@ function FactorRow({
         )}
       </div>
 
-      <button type="button" onClick={onDelete} className="ml-auto text-sm text-red-600 hover:underline">
+      <button type="button" onClick={onDelete} className="ml-auto self-center text-sm text-red-600 hover:underline">
         Remove
       </button>
     </div>
   )
 }
 
-function NewFactorForm({
+function PresetPicker({
+  presets,
   onCancel,
-  onSubmit,
+  onAdd,
   loading,
 }: {
+  presets: Preset[]
   onCancel: () => void
-  onSubmit: (payload: {
-    name: string
-    factor_type: FactorType
-    weight: number
-    min_value?: number
-    max_value?: number
-  }) => void
+  onAdd: (presetKey: string) => Promise<void>
   loading: boolean
 }) {
-  const [name, setName] = useState('')
-  const [factorType, setFactorType] = useState<FactorType>('boolean')
-  const [weight, setWeight] = useState('1')
-  const [minValue, setMinValue] = useState('0')
-  const [maxValue, setMaxValue] = useState('100')
+  const [search, setSearch] = useState('')
 
-  const canSubmit = name.trim() && (factorType === 'boolean' || (minValue !== '' && maxValue !== ''))
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return presets
+    return presets.filter(
+      (p) => p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q) || p.key.includes(q)
+    )
+  }, [presets, search])
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div>
-          <label className="mb-1 block text-xs font-medium text-slate-500">Name</label>
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-slate-500 focus:outline-none"
-          />
-        </div>
-        <div>
-          <label className="mb-1 block text-xs font-medium text-slate-500">Type</label>
-          <select
-            value={factorType}
-            onChange={(e) => setFactorType(e.target.value as FactorType)}
-            className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-slate-500 focus:outline-none"
-          >
-            <option value="boolean">Yes / No</option>
-            <option value="number">Number</option>
-          </select>
-        </div>
-        <div>
-          <label className="mb-1 block text-xs font-medium text-slate-500">Weight</label>
-          <input
-            type="number"
-            step="any"
-            value={weight}
-            onChange={(e) => setWeight(e.target.value)}
-            className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-slate-500 focus:outline-none"
-          />
-        </div>
-        {factorType === 'number' && (
-          <>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-500">Min</label>
-              <input
-                type="number"
-                step="any"
-                value={minValue}
-                onChange={(e) => setMinValue(e.target.value)}
-                className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-slate-500 focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-500">Max</label>
-              <input
-                type="number"
-                step="any"
-                value={maxValue}
-                onChange={(e) => setMaxValue(e.target.value)}
-                className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-slate-500 focus:outline-none"
-              />
-            </div>
-          </>
-        )}
-      </div>
-      <div className="mt-3 flex gap-2">
-        <button
-          type="button"
-          disabled={!canSubmit || loading}
-          onClick={() =>
-            onSubmit({
-              name: name.trim(),
-              factor_type: factorType,
-              weight: Number(weight),
-              min_value: factorType === 'number' ? Number(minValue) : undefined,
-              max_value: factorType === 'number' ? Number(maxValue) : undefined,
-            })
-          }
-          className="rounded-lg bg-slate-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
-        >
-          Add factor
-        </button>
+      <div className="mb-3 flex items-center gap-2">
+        <input
+          type="text"
+          autoFocus
+          placeholder="Search factors (e.g. RSI, VWAP, confluence)…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:border-slate-500 focus:outline-none"
+        />
         <button
           type="button"
           onClick={onCancel}
-          className="rounded-lg px-4 py-1.5 text-sm font-medium text-slate-500 hover:bg-slate-100"
+          className="rounded-lg px-3 py-1.5 text-sm font-medium text-slate-500 hover:bg-slate-100"
         >
-          Cancel
+          Close
         </button>
       </div>
+
+      {filtered.length === 0 ? (
+        <p className="text-sm text-slate-400">
+          {presets.length === 0 ? 'All available presets have been added.' : 'No presets match your search.'}
+        </p>
+      ) : (
+        <div className="max-h-64 space-y-1 overflow-y-auto">
+          {filtered.map((preset) => (
+            <button
+              key={preset.key}
+              type="button"
+              disabled={loading}
+              onClick={() => onAdd(preset.key)}
+              className="flex w-full items-start justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-50 disabled:opacity-50"
+            >
+              <span>
+                <span className="font-medium text-slate-900">{preset.name}</span>
+                <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
+                  {preset.input_type === 'boolean' ? 'yes / no' : 'number'}
+                </span>
+                <br />
+                <span className="text-xs text-slate-400">{preset.description}</span>
+              </span>
+              <span className="shrink-0 self-center text-xs font-medium text-slate-500">+ Add</span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

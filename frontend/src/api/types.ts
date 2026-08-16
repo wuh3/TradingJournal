@@ -1,6 +1,6 @@
 export type Direction = 'buy' | 'sell'
 export type OrderStatus = 'pending' | 'filled'
-export type FactorType = 'number' | 'boolean'
+export type InputType = 'number' | 'boolean'
 
 export interface Tag {
   id: number
@@ -79,18 +79,26 @@ export interface PnlSummary {
   closed_lots: PnlClosedLot[]
 }
 
+export interface Preset {
+  key: string
+  name: string
+  description: string
+  input_type: InputType
+}
+
 export interface Factor {
   id: number
+  preset_key: string
   name: string
-  factor_type: FactorType
+  description: string
+  input_type: InputType
   weight: number
-  min_value: number | null
-  max_value: number | null
   sort_order: number
 }
 
 export interface FactorContribution {
   factor_id: number
+  preset_key: string
   name: string
   raw_value: number
   normalized_value: number

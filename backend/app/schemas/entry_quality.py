@@ -1,31 +1,25 @@
-from pydantic import BaseModel, ConfigDict, model_validator
+from typing import Literal
 
-from app.models.entry_quality import FactorType
+from pydantic import BaseModel, ConfigDict, Field
+
+InputType = Literal["number", "boolean"]
+
+
+class PresetRead(BaseModel):
+    key: str
+    name: str
+    description: str
+    input_type: InputType
 
 
 class FactorCreate(BaseModel):
-    name: str
-    factor_type: FactorType
-    weight: float = 0
-    min_value: float | None = None
-    max_value: float | None = None
+    preset_key: str
+    weight: float = Field(0, ge=0, le=100)
     sort_order: int = 0
-
-    @model_validator(mode="after")
-    def check_number_bounds(self):
-        if self.factor_type == FactorType.NUMBER:
-            if self.min_value is None or self.max_value is None:
-                raise ValueError("min_value and max_value are required for number factors")
-            if self.max_value <= self.min_value:
-                raise ValueError("max_value must be greater than min_value")
-        return self
 
 
 class FactorUpdate(BaseModel):
-    name: str | None = None
-    weight: float | None = None
-    min_value: float | None = None
-    max_value: float | None = None
+    weight: float | None = Field(None, ge=0, le=100)
     sort_order: int | None = None
 
 
@@ -33,21 +27,22 @@ class FactorRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    preset_key: str
     name: str
-    factor_type: FactorType
+    description: str
+    input_type: InputType
     weight: float
-    min_value: float | None
-    max_value: float | None
     sort_order: int
 
 
 class CalculateRequest(BaseModel):
-    # factor_id -> raw value (0/1 for boolean, raw number for number factors)
+    # factor_id -> raw value (0/1 for boolean presets, raw indicator value for number presets)
     values: dict[int, float]
 
 
 class FactorContribution(BaseModel):
     factor_id: int
+    preset_key: str
     name: str
     raw_value: float
     normalized_value: float
