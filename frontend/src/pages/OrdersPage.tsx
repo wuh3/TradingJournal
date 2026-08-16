@@ -47,7 +47,7 @@ export function OrdersPage() {
                         {shown.map((t) => (
                           <span
                             key={t.id}
-                            className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600"
+                            className="rounded-full bg-slate-700 px-2 py-0.5 text-xs font-medium text-white"
                           >
                             {t.name}
                           </span>

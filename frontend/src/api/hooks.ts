@@ -227,10 +227,10 @@ export function useUploadOrderImage(journalId: number) {
   })
 }
 
-export function imageUrl(kind: 'journal' | 'order', imageId: number): string {
-  const base = (import.meta as { env: { VITE_API_BASE_URL?: string } }).env.VITE_API_BASE_URL || 'http://localhost:8000'
-  return `${base}/api/${kind}-images/${imageId}/raw`
-}
+// Note: there's deliberately no `imageUrl()` helper for direct <img src="..."> use.
+// The raw image endpoints require a Bearer token like every other API route, and a
+// plain <img> tag can't attach one -- see components/AuthedImage.tsx, which fetches
+// the image through the authenticated axios client instead.
 
 // ---- P&L ----
 

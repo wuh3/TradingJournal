@@ -1,6 +1,5 @@
 import { useRef, useState } from 'react'
 import {
-  imageUrl,
   useCreateLink,
   useCreateOrder,
   useCreateTag,
@@ -11,6 +10,9 @@ import {
   useUploadOrderImage,
 } from '../api/hooks'
 import type { Direction, Order, OrderStatus, PositionType } from '../api/types'
+import { AuthedImage } from './AuthedImage'
+import { ImageLightbox } from './ImageLightbox'
+import { extractImageFromClipboard } from '../lib/clipboardImage'
 
 export function OrdersSection({ journalId, orders }: { journalId: number; orders: Order[] }) {
   const createOrder = useCreateOrder(journalId)
@@ -20,6 +22,7 @@ export function OrdersSection({ journalId, orders }: { journalId: number; orders
 
   const [showForm, setShowForm] = useState(false)
   const [linkingOrder, setLinkingOrder] = useState<Order | null>(null)
+  const [viewingImage, setViewingImage] = useState<{ id: number; filename: string } | null>(null)
 
   return (
     <div className="space-y-4">
@@ -35,6 +38,7 @@ export function OrdersSection({ journalId, orders }: { journalId: number; orders
               onLink={() => setLinkingOrder(order)}
               onUploadImage={(file) => uploadOrderImage.mutate({ orderId: order.id, file })}
               onDeleteLink={(linkId) => deleteLink.mutate(linkId)}
+              onImageClick={(img) => setViewingImage({ id: img.id, filename: img.filename })}
             />
           ))}
         </div>
@@ -62,6 +66,15 @@ export function OrdersSection({ journalId, orders }: { journalId: number; orders
       {linkingOrder && (
         <LinkPickerModal journalId={journalId} order={linkingOrder} onClose={() => setLinkingOrder(null)} />
       )}
+
+      {viewingImage && (
+        <ImageLightbox
+          kind="order"
+          imageId={viewingImage.id}
+          alt={viewingImage.filename}
+          onClose={() => setViewingImage(null)}
+        />
+      )}
     </div>
   )
 }
@@ -72,12 +85,14 @@ function OrderCard({
   onLink,
   onUploadImage,
   onDeleteLink,
+  onImageClick,
 }: {
   order: Order
   onDelete: () => void
   onLink: () => void
   onUploadImage: (file: File) => void
   onDeleteLink: (linkId: number) => void
+  onImageClick: (image: { id: number; filename: string }) => void
 }) {
   const fileInput = useRef<HTMLInputElement>(null)
   const directionColor = order.direction === 'buy' ? 'text-emerald-600' : 'text-red-600'
@@ -108,7 +123,7 @@ function OrderCard({
           {order.tags.map((t) => (
             <span
               key={t.id}
-              className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600"
+              className="rounded-full bg-slate-700 px-2 py-0.5 text-xs font-medium text-white"
             >
               {t.name}
             </span>
@@ -121,6 +136,14 @@ function OrderCard({
           <button
             type="button"
             onClick={() => fileInput.current?.click()}
+            onPaste={(e) => {
+              const file = extractImageFromClipboard(e)
+              if (file) {
+                e.preventDefault()
+                onUploadImage(file)
+              }
+            }}
+            title="Click to browse, or click then paste (⌘V / Ctrl+V) a screenshot"
             className="font-medium text-slate-700 hover:underline"
           >
             + Image
@@ -169,11 +192,13 @@ function OrderCard({
       {order.images.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2">
           {order.images.map((img) => (
-            <img
+            <AuthedImage
               key={img.id}
-              src={imageUrl('order', img.id)}
+              kind="order"
+              imageId={img.id}
               alt={img.filename}
               className="h-16 w-16 rounded-lg border border-slate-200 object-cover"
+              onClick={() => onImageClick({ id: img.id, filename: img.filename })}
             />
           ))}
         </div>

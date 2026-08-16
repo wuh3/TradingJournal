@@ -1,7 +1,10 @@
 import { useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { imageUrl, useDeleteJournal, useJournal, useUpdateJournal, useUploadJournalImage } from '../api/hooks'
+import { useDeleteJournal, useJournal, useUpdateJournal, useUploadJournalImage } from '../api/hooks'
+import { AuthedImage } from '../components/AuthedImage'
+import { ImageLightbox } from '../components/ImageLightbox'
 import { OrdersSection } from '../components/OrdersSection'
+import { extractImageFromClipboard } from '../lib/clipboardImage'
 
 export function JournalDetailPage() {
   const { id } = useParams()
@@ -15,6 +18,7 @@ export function JournalDetailPage() {
 
   const [notesDraft, setNotesDraft] = useState<string | null>(null)
   const journalImageInput = useRef<HTMLInputElement>(null)
+  const [viewingImageId, setViewingImageId] = useState<number | null>(null)
 
   if (isLoading || !journal) {
     return <p className="text-sm text-slate-400">Loading…</p>
@@ -40,7 +44,7 @@ export function JournalDetailPage() {
               {journal.tags.map((t) => (
                 <span
                   key={t.id}
-                  className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600"
+                  className="rounded-full bg-slate-700 px-2 py-0.5 text-xs font-medium text-white"
                 >
                   {t.name}
                 </span>
@@ -109,16 +113,31 @@ export function JournalDetailPage() {
             }}
           />
         </div>
+        <div
+          tabIndex={0}
+          onPaste={async (e) => {
+            const file = extractImageFromClipboard(e)
+            if (file) {
+              e.preventDefault()
+              await uploadJournalImage.mutateAsync(file)
+            }
+          }}
+          className="mb-3 rounded-lg border border-dashed border-slate-300 px-3 py-2 text-center text-xs text-slate-400 focus:border-slate-400 focus:bg-slate-50 focus:text-slate-500 focus:outline-none"
+        >
+          Click here, then paste (⌘V / Ctrl+V) a screenshot to attach it
+        </div>
         {journal.images.length === 0 ? (
           <p className="text-sm text-slate-400">No images yet.</p>
         ) : (
           <div className="flex flex-wrap gap-3">
             {journal.images.map((img) => (
-              <img
+              <AuthedImage
                 key={img.id}
-                src={imageUrl('journal', img.id)}
+                kind="journal"
+                imageId={img.id}
                 alt={img.filename}
                 className="h-24 w-24 rounded-lg border border-slate-200 object-cover"
+                onClick={() => setViewingImageId(img.id)}
               />
             ))}
           </div>
@@ -133,6 +152,15 @@ export function JournalDetailPage() {
         </p>
         <OrdersSection journalId={journalId} orders={journal.orders} />
       </section>
+
+      {viewingImageId !== null && (
+        <ImageLightbox
+          kind="journal"
+          imageId={viewingImageId}
+          alt={journal.images.find((img) => img.id === viewingImageId)?.filename ?? 'Journal image'}
+          onClose={() => setViewingImageId(null)}
+        />
+      )}
     </div>
   )
 }
