@@ -17,5 +17,51 @@ services:
       timeout: 5s
       retries: 10
 
+  backend:
+    build: ./backend
+    container_name: trading_journal_backend
+    restart: unless-stopped
+    # Deliberately NOT using `environment:`/`env_file:` for secrets here.
+    # Docker Compose interpolates "$" in both the top-level .env AND any
+    # env_file it loads for a service -- which mangles a bcrypt hash (see
+    # backend/.env.example). Instead, backend/.env is bind-mounted straight
+    # into the container as a plain file below, and the app reads it itself
+    # via python-dotenv/pydantic-settings (backend/app/core/config.py),
+    # completely bypassing Compose's interpolation. POSTGRES_HOST is the one
+    # value that legitimately needs to differ inside the Docker network (the
+    # DB is reachable at the service name "db", not "localhost"), and it has
+    # no "$" in it, so overriding it via `environment:` here is safe.
+    environment:
+      POSTGRES_HOST: db
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  frontend:
+    build: ./frontend
+    container_name: trading_journal_frontend
+    restart: unless-stopped
+    environment:
+      # No "$" here, so plain `environment:` (not a file) is fine.
+      VITE_API_BASE_URL: http://localhost:8000
+    depends_on:
+      - backend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+
 volumes:
   tj_pgdata:
+  frontend_node_modules:

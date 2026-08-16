@@ -16,89 +16,87 @@ list of design decisions behind this stack.
 
 ## Prerequisites
 
-- Docker Desktop (for PostgreSQL)
-- Python 3.11+
-- Node.js 20+
+- Docker Desktop
+
+That's it — Postgres, the backend, and the frontend all run as containers via `docker compose`. You don't need Python or Node installed locally.
 
 ## First-time setup
 
-### 1. Start PostgreSQL
+### 1. Root `.env` (Postgres credentials, read by `docker compose`)
 
 ```bash
 cp .env.example .env
-docker compose up -d
 ```
 
-This starts a Postgres container on `localhost:5432` using the credentials in `.env`.
+The defaults work fine as-is; edit the values if you want your own credentials.
 
-### 2. Backend
+### 2. `backend/.env` (app secrets, read by the backend container)
 
 ```bash
-cd backend
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp ../.env .env   # backend reads its own .env in this directory
+cp backend/.env.example backend/.env
 ```
 
-Generate a password hash for your login and put it in `backend/.env`:
+Fill in the same `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` you put in the root `.env` (`POSTGRES_HOST` doesn't matter here — Compose overrides it to `db` automatically for the container), plus your login credentials. Generate a password hash for your login:
 
 ```bash
-python scripts/hash_password.py "your-password-here"
+docker compose run --rm backend python scripts/hash_password.py "your-password-here"
 ```
 
-Copy the printed hash into `APP_PASSWORD_HASH=` in `backend/.env` (keep the surrounding quotes if the hash contains `$` characters — the example already shows the format). Also set `APP_USERNAME` to whatever username you want to log in with.
+(This spins up a one-off backend container just to run the script — no local Python needed. If `docker compose run` complains that the image doesn't exist yet, run `docker compose build backend` first.)
 
-Run migrations and start the API:
+Copy the printed hash into `APP_PASSWORD_HASH=` in `backend/.env`, wrapped in single quotes (e.g. `APP_PASSWORD_HASH='$2b$12$abcd...'`). Also set `APP_USERNAME` to whatever username you want to log in with.
+
+> **Why two separate `.env` files?** Docker Compose interpolates any `$` it finds in `.env` values against its own variable table, which mangles a bcrypt hash (it's practically nothing but `$`-delimited segments) if it's in a file Compose parses. The root `.env` (Postgres only, no secrets) is the one Compose's top-level `${...}` substitution reads. `backend/.env` is never passed through Compose's env parsing at all — it's bind-mounted into the backend container as a plain file, and the FastAPI app reads it directly. Don't add `environment:`/`env_file:` entries for secrets to `docker-compose.yml`, and don't merge these two files back together.
+
+### 3. Build and start everything
 
 ```bash
-alembic upgrade head
-uvicorn app.main:app --reload --port 8000
+docker compose up --build
 ```
 
-The API is now running at http://localhost:8000 (interactive docs at `/docs`). On startup it creates your single user account from `APP_USERNAME` / `APP_PASSWORD_HASH`.
+First run builds the backend and frontend images (a minute or two) and runs DB migrations automatically on backend startup. Subsequent runs are just `docker compose up -d`.
 
-### 3. Frontend
-
-In a new terminal:
-
-```bash
-cd frontend
-npm install
-cp .env.example .env   # points the frontend at http://localhost:8000 by default
-npm run dev
-```
+- Frontend: http://localhost:5173
+- Backend API: http://localhost:8000 (docs at `/docs`)
+- Postgres: `localhost:5432`
 
 Open http://localhost:5173 and log in with the username/password you set above.
 
 ## Day-to-day usage
 
-Once set up, starting the app is just:
-
 ```bash
-docker compose up -d                 # from repo root
-cd backend && source .venv/bin/activate && uvicorn app.main:app --reload --port 8000
-cd frontend && npm run dev            # in another terminal
+docker compose up -d       # start everything in the background
+docker compose logs -f     # tail logs from all services
+docker compose down        # stop everything (data persists in the tj_pgdata volume)
 ```
+
+Both backend and frontend source directories are bind-mounted into their containers, so code edits on your machine hot-reload inside the containers (uvicorn `--reload`, Vite HMR) without rebuilding the image. You only need `docker compose up --build` again after changing `requirements.txt` or `package.json`.
 
 ## Project structure
 
 ```
+docker-compose.yml   db + backend + frontend services
 backend/
+  Dockerfile
   app/
     core/       settings, DB session, auth/security, single-user bootstrap
     models/     SQLAlchemy models (User, Journal, Tag, OrderItem, OrderLink, EntryQualityFactor, images)
     schemas/    Pydantic request/response schemas
     routers/    API endpoints (auth, journals, orders, tags, images, pnl, calculator)
-  alembic/      DB migrations
+  alembic/      DB migrations (run automatically on container start)
   scripts/hash_password.py   generates a bcrypt hash for your login password
 frontend/
+  Dockerfile
   src/
     api/        axios client, typed hooks (React Query) for every endpoint
     auth/       auth context (JWT stored in localStorage)
     components/ Layout (sidebar nav) and route guard
     pages/      Login, Home, Journal detail, P&L, Entry Quality Calculator
 ```
+
+### Running natively without Docker (optional)
+
+Everything above assumes Docker for all three services. If you ever want to run the backend or frontend directly on your machine instead (e.g. for debugging), that still works: `backend/app/core/config.py` resolves `backend/.env` by an absolute path, so it loads correctly regardless of which directory you launch `uvicorn`/`alembic` from. You'd need Python 3.11+ and Node 20+ installed, a venv with `pip install -r backend/requirements.txt`, `npm install` in `frontend/`, and `POSTGRES_HOST=localhost` in `backend/.env` (Postgres itself can still run via `docker compose up db`). This isn't the primary documented workflow, though — Docker for everything is simpler and is what's tested.
 
 ## Notes on the data model
 
