@@ -115,6 +115,11 @@ function OrderCard({
           <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
             {order.status}
           </span>
+          {order.quality_score !== null && (
+            <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">
+              Quality {order.quality_score}
+            </span>
+          )}
           {order.open_quantity !== null && order.open_quantity < order.quantity && (
             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
               {order.open_quantity} open
@@ -221,6 +226,7 @@ function NewOrderForm({
     position_type: PositionType
     status: OrderStatus
     note?: string
+    quality_score?: number
     tag_ids: number[]
   }) => void
   loading: boolean
@@ -235,10 +241,12 @@ function NewOrderForm({
   const [positionType, setPositionType] = useState<PositionType>('long')
   const [status, setStatus] = useState<OrderStatus>('filled')
   const [note, setNote] = useState('')
+  const [qualityScore, setQualityScore] = useState('')
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([])
   const [newTagName, setNewTagName] = useState('')
 
-  const canSubmit = ticker.trim() && price && quantity
+  const qualityScoreValid = qualityScore === '' || (Number(qualityScore) >= 0 && Number(qualityScore) <= 100)
+  const canSubmit = ticker.trim() && price && quantity && qualityScoreValid
 
   function toggleTag(tagId: number) {
     setSelectedTagIds((prev) => (prev.includes(tagId) ? prev.filter((id) => id !== tagId) : [...prev, tagId]))
@@ -253,7 +261,7 @@ function NewOrderForm({
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-500">Ticker</label>
           <input
@@ -315,6 +323,21 @@ function NewOrderForm({
             <option value="pending">Pending</option>
           </select>
         </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-500">Quality Score</label>
+          <input
+            type="number"
+            step="any"
+            min={0}
+            max={100}
+            value={qualityScore}
+            onChange={(e) => setQualityScore(e.target.value)}
+            placeholder="0-100"
+            className={`w-full rounded-lg border px-2 py-1.5 text-sm focus:outline-none ${
+              qualityScoreValid ? 'border-slate-300 focus:border-slate-500' : 'border-red-400 focus:border-red-500'
+            }`}
+          />
+        </div>
         <div className="col-span-2 sm:col-span-4 lg:col-span-1">
           <label className="mb-1 block text-xs font-medium text-slate-500">Note</label>
           <input
@@ -371,6 +394,7 @@ function NewOrderForm({
               position_type: positionType,
               status,
               note: note.trim() || undefined,
+              quality_score: qualityScore === '' ? undefined : Number(qualityScore),
               tag_ids: selectedTagIds,
             })
           }

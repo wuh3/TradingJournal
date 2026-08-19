@@ -1,7 +1,7 @@
 from datetime import date as date_type
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.order import OrderDirection, OrderStatus, PositionType
 from app.schemas.image import ImageRead
@@ -17,6 +17,7 @@ class OrderCreate(BaseModel):
     position_type: PositionType
     status: OrderStatus = OrderStatus.FILLED
     note: str | None = None
+    quality_score: float | None = Field(default=None, ge=0, le=100)
     tag_ids: list[int] = []
 
 
@@ -28,6 +29,7 @@ class OrderUpdate(BaseModel):
     position_type: PositionType | None = None
     status: OrderStatus | None = None
     note: str | None = None
+    quality_score: float | None = Field(default=None, ge=0, le=100)
     tag_ids: list[int] | None = None
 
 
@@ -43,6 +45,7 @@ class OrderRead(BaseModel):
     position_type: PositionType
     status: OrderStatus
     note: str | None
+    quality_score: float | None
     created_at: datetime
     updated_at: datetime
     tags: list[TagRead] = []
@@ -67,6 +70,7 @@ class OrderListItem(BaseModel):
     quantity: float
     direction: OrderDirection
     position_type: PositionType
+    quality_score: float | None
     tags: list[TagRead] = []
 
 

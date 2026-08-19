@@ -35,6 +35,7 @@ export interface Order {
   position_type: PositionType
   status: OrderStatus
   note: string | null
+  quality_score: number | null
   created_at: string
   updated_at: string
   tags: Tag[]
@@ -53,6 +54,7 @@ export interface OrderListItem {
   quantity: number
   direction: Direction
   position_type: PositionType
+  quality_score: number | null
   tags: Tag[]
 }
 

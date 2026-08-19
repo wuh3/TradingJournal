@@ -113,6 +113,7 @@ export function useCreateOrder(journalId: number) {
       position_type: PositionType
       status?: 'pending' | 'filled'
       note?: string
+      quality_score?: number
       tag_ids?: number[]
     }) => (await apiClient.post<Order>(`/api/journals/${journalId}/orders`, payload)).data,
     onSuccess: () => invalidateOrderRelated(qc, journalId),

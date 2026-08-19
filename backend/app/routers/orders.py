@@ -101,6 +101,7 @@ def list_orders(
             quantity=float(o.quantity),
             direction=o.direction,
             position_type=o.position_type,
+            quality_score=float(o.quality_score) if o.quality_score is not None else None,
             tags=o.tags,
         )
         for o in orders

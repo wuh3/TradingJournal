@@ -32,6 +32,7 @@ export function OrdersPage() {
                 <th className="px-4 py-2">Direction</th>
                 <th className="px-4 py-2">Price</th>
                 <th className="px-4 py-2">Quantity</th>
+                <th className="px-4 py-2">Quality Score</th>
               </tr>
             </thead>
             <tbody>
@@ -82,6 +83,9 @@ export function OrdersPage() {
                     </td>
                     <td className="px-4 py-2 text-slate-600">${o.price}</td>
                     <td className="px-4 py-2 text-slate-600">{o.quantity}</td>
+                    <td className="px-4 py-2 text-slate-600">
+                      {o.quality_score !== null ? o.quality_score : <span className="text-slate-300">—</span>}
+                    </td>
                   </tr>
                 )
               })}
